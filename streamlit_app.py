@@ -1,3 +1,5 @@
+import re
+
 import streamlit as st
 
 
@@ -10,7 +12,19 @@ st.set_page_config(
 # This public repository intentionally contains no real participant assignments,
 # OneDrive links, or VLM attributes. Those belong in private Streamlit secrets or
 # a private database before the study is launched.
-PARTICIPANT_SLOT = "P001"
+
+
+def get_participant_slot() -> str:
+    """Read the fixed Taskflow slot from the allocated study URL."""
+    slot = str(st.query_params.get("slot", "P001")).strip().upper()
+    match = re.fullmatch(r"P(\d{3})", slot)
+    if not match or not 1 <= int(match.group(1)) <= 134:
+        st.error("This study link has an invalid participant slot.")
+        st.stop()
+    return slot
+
+
+PARTICIPANT_SLOT = get_participant_slot()
 TRIAL_COUNT = 10
 
 DEFAULT_COMPLETION_URL = "https://app.prolific.com/submissions/complete?cc=CD10CDO9"
@@ -103,7 +117,10 @@ def get_trial(trial_number: int) -> dict:
     """Safe public placeholder for the private P001 assignment record."""
     return {
         "video_url": None,
-        "text_description": None,
+        "text_description": (
+            f"Secure assignment data for {PARTICIPANT_SLOT}, Trial {trial_number} "
+            "will load here."
+        ),
         "image_url": None,
         "human_state": None,
         "object_property": None,
