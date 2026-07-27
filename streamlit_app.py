@@ -112,6 +112,18 @@ ATTRIBUTE_SCALE = [
     "Cannot judge from the model input",
 ]
 
+CONSENT_STATEMENTS = [
+    "I confirm that I have read and understood the participant information for this study.",
+    "I confirm that I am aged 18 or over.",
+    "I understand that my participation is voluntary and that I may stop taking part at any time before submitting the questionnaire, without giving a reason.",
+    "I understand what participation involves, including watching 10 short simulated robot-scene videos, reading brief text descriptions, and answering questions about proactive robot responses and navigation constraints.",
+    "I understand that the questionnaire will not ask for my name, email address, signature, or other directly identifying information.",
+    "I understand that my Prolific ID may be used only to manage participation, payment, completion checking, and data quality review.",
+    "I understand that confidentiality and anonymity will be maintained and that research outputs will not identify me as an individual participant.",
+    "I understand that, after I submit my pseudonymous questionnaire responses and they have been combined with other data, it may not be possible to withdraw them.",
+    "I agree for my pseudonymous questionnaire responses to be used for academic research, including anonymised or aggregated reporting and appropriate research-data retention or sharing.",
+]
+
 
 def get_trial(trial_number: int) -> dict:
     """Safe public placeholder for the private P001 assignment record."""
@@ -376,19 +388,68 @@ st.caption(f"Assigned participant slot: {PARTICIPANT_SLOT}  |  Prolific PID: {pr
 render_progress()
 
 if st.session_state.page == "consent":
-    st.header("Participant Information and Consent Check")
-    st.radio("Assigned participant ID", [PARTICIPANT_SLOT], index=0, disabled=True)
+    st.header("Participant Information and Online Consent")
+    st.caption(f"Assigned study slot: {PARTICIPANT_SLOT}")
+    st.markdown("### Invitation")
+    st.write(
+        "You are invited to take part in a research study conducted at King's College London. "
+        "Please read the information below carefully before deciding whether to participate. "
+        "You may stop at any time before submitting the questionnaire."
+    )
+    st.markdown("### Purpose of the study")
+    st.write(
+        "This study examines how people interpret everyday human-robot interaction scenes and "
+        "what proactive actions or navigation constraints they think a robot should follow. "
+        "The results will help build a knowledge base for proactive robot task selection and socially aware navigation."
+    )
+    st.markdown("### Why you have been invited")
+    st.write(
+        "You are invited as an adult, English-fluent participant who can complete an online questionnaire involving short videos and written scene descriptions."
+    )
+    st.markdown("### What you will be asked to do")
+    st.write(
+        "You will watch 10 short simulated robot-scene videos and read brief scene descriptions. "
+        "Some scenes may also include a simple top-down view or a frame used by a vision-language model. "
+        "The visual simulation may not always be fully realistic, so the text description is provided to help you understand the scene. "
+        "For each scene, you will judge what is happening, what proactive response the robot should take, and what movement or interaction constraints are relevant."
+    )
+    st.write("The questionnaire is expected to take approximately 40 minutes.")
+    st.markdown("### Voluntary participation, risks, and data use")
+    st.write(
+        "Participation is voluntary. You may choose not to take part or stop before submission without giving a reason. "
+        "The study is considered minimum risk. Some scenes may involve possible risks or assistance needs in everyday environments, but no graphic or distressing content is intended."
+    )
+    st.write(
+        "The questionnaire will not ask for your name, email address, signature, or other direct identifiers. "
+        "Your Prolific ID is used only for participation management, payment, completion checking, and data-quality review. "
+        "Responses are stored securely for academic research; publications, presentations, and thesis outputs will not identify you."
+    )
+    st.write(
+        "After submission, responses may be combined with other pseudonymous or anonymised data, so withdrawal may no longer be possible."
+    )
+    st.markdown("### Questions or concerns")
+    st.write(
+        "Researcher: Li Xiangqi, King's College London, xiangqi.1.li@kcl.ac.uk  \\n"
+        "Supervisor: Oya Celiktutan, King's College London, oya.celiktutan@kcl.ac.uk"
+    )
+    st.markdown("### Consent check")
+    st.write("Please tick every statement to confirm your consent. Unticked statements mean that you do not consent to that element of the study.")
+    consent_confirmations = []
+    for statement_number, statement in enumerate(CONSENT_STATEMENTS):
+        consent_confirmations.append(
+            st.checkbox(statement, key=f"consent_statement_{statement_number}")
+        )
     consent = st.radio(
         "Do you consent to participate in this study?",
-        ["Yes, I consent to participate in this study.", "No, I do not consent."],
+        ["Yes, I consent and wish to continue.", "No, I do not consent."],
         index=None,
-        help=(
-            "Please read the study information sheet and consent form before continuing. By selecting Yes, you confirm that you have read and understood the study information, voluntarily agree to participate, understand that you may stop at any time, and agree that your survey responses will be stored securely and used only for research purposes."
-        ),
     )
     if st.button("Continue", type="primary"):
-        if consent == "Yes, I consent to participate in this study.":
-            move_to("background")
+        if consent == "Yes, I consent and wish to continue.":
+            if all(consent_confirmations):
+                move_to("background")
+            else:
+                st.error("Please tick every consent statement before continuing.")
         elif consent == "No, I do not consent.":
             move_to("no_consent")
         else:
