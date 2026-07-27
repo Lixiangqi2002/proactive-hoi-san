@@ -200,9 +200,10 @@ def render_trial(trial_number: int) -> None:
             key=f"concerns_{trial_number}",
             help='If you select "No special concern is present" or "There is not enough information", please do not select any other option.',
         )
-        other_concern = ""
-        if "Other (please specify)" in concerns:
-            other_concern = st.text_input("Other concern or need", key=f"other_concern_{trial_number}")
+        other_concern = st.text_input(
+            'If you selected "Other (please specify)", please describe the other concern or need.',
+            key=f"other_concern_{trial_number}",
+        )
 
         st.subheader("2.4. Primary high-level response")
         primary_response = st.radio(
@@ -211,12 +212,10 @@ def render_trial(trial_number: int) -> None:
             index=None,
             key=f"primary_response_{trial_number}",
         )
-        other_primary = ""
-        if primary_response == "Other (please specify)":
-            other_primary = st.text_input(
-                "Please specify the other primary response",
-                key=f"other_primary_{trial_number}",
-            )
+        other_primary = st.text_input(
+            'If you selected "Other (please specify)", please specify the other primary response.',
+            key=f"other_primary_{trial_number}",
+        )
 
         st.subheader("2.5a. Additional high-level responses")
         selected_primary_short = primary_label_to_short_label(primary_response)
@@ -241,12 +240,10 @@ def render_trial(trial_number: int) -> None:
             key=f"secondary_other_{trial_number}",
         ):
             secondary_responses.append("Other (please specify)")
-        other_secondary = ""
-        if "Other (please specify)" in secondary_responses:
-            other_secondary = st.text_input(
-                "Please specify the other additional response",
-                key=f"other_secondary_{trial_number}",
-            )
+        other_secondary = st.text_input(
+            'If you selected "Other (please specify)", please specify the other additional response.',
+            key=f"other_secondary_{trial_number}",
+        )
 
         st.subheader("2.5b. Rationale")
         rationale = st.text_area(
