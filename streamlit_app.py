@@ -1,5 +1,7 @@
 import re
+from typing import Any
 
+import requests
 import streamlit as st
 
 
@@ -10,8 +12,8 @@ st.set_page_config(
 )
 
 # This public repository intentionally contains no real participant assignments,
-# OneDrive links, or VLM attributes. Those belong in private Streamlit secrets or
-# a private database before the study is launched.
+# OneDrive links, or VLM attributes. They are retrieved at runtime from the
+# private Apps Script endpoint configured in Streamlit secrets.
 
 
 def get_participant_slot() -> str:
@@ -125,24 +127,59 @@ CONSENT_STATEMENTS = [
 ]
 
 
-def get_trial(trial_number: int) -> dict:
-    """Safe public placeholder for the private P001 assignment record."""
+@st.cache_data(ttl=300, show_spinner="Loading your assigned study materials...")
+def load_assigned_trials(slot: str, endpoint: str, api_key: str) -> list[dict[str, Any]]:
+    """Request only one participant's ten trials from the private endpoint."""
+    response = requests.get(
+        endpoint,
+        params={"slot": slot, "key": api_key},
+        timeout=30,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    if not payload.get("ok"):
+        raise RuntimeError(payload.get("error", "The assignment API returned an unknown error."))
+    trials = payload.get("trials", [])
+    if len(trials) != TRIAL_COUNT:
+        raise RuntimeError(f"Expected {TRIAL_COUNT} trials for {slot}, received {len(trials)}.")
+    return trials
+
+
+def get_private_api_config() -> tuple[str, str] | None:
+    """Read the non-public endpoint URL and key from Streamlit Cloud secrets."""
+    try:
+        config = st.secrets["participant_data_api"]
+        return str(config["url"]), str(config["key"])
+    except (KeyError, FileNotFoundError):
+        return None
+
+
+def get_trial(trial_number: int) -> dict[str, Any]:
+    """Return this slot's actual assigned trial; no trial data lives in GitHub."""
+    if "assigned_trials" not in st.session_state:
+        config = get_private_api_config()
+        if config is None:
+            raise RuntimeError(
+                "The private assignment source has not been configured for this app yet."
+            )
+        st.session_state.assigned_trials = load_assigned_trials(
+            PARTICIPANT_SLOT, *config
+        )
+
+    source = st.session_state.assigned_trials[trial_number - 1]
     return {
-        "video_url": None,
-        "text_description": (
-            f"Secure assignment data for {PARTICIPANT_SLOT}, Trial {trial_number} "
-            "will load here."
-        ),
-        "image_url": None,
-        "human_state": None,
-        "object_property": None,
-        "spatial_context": None,
-        "risk_factor": None,
+        "video_url": source.get("video_link") or None,
+        "text_description": source.get("text_description") or None,
+        "image_url": source.get("image_link") or None,
+        "human_state": source.get("human_state") or None,
+        "object_property": source.get("object_property") or None,
+        "spatial_context": source.get("spatial_context") or None,
+        "risk_factor": source.get("risk_factor") or None,
     }
 
 
 def display_attribute(value: str | None) -> str:
-    return value if value else "[Will load from the secure assignment record]"
+    return value if value else "No prediction was supplied for this trial."
 
 
 def primary_label_to_short_label(value: str | None) -> str | None:
@@ -190,7 +227,11 @@ def render_exit(title: str, text: str, completion_url: str, code: str) -> None:
 
 
 def render_trial(trial_number: int) -> None:
-    trial = get_trial(trial_number)
+    try:
+        trial = get_trial(trial_number)
+    except RuntimeError as error:
+        st.error(f"Study materials could not be loaded: {error}")
+        st.stop()
     st.header(f"Trial #{trial_number} of {TRIAL_COUNT}")
     st.caption(f"Assigned participant slot: {PARTICIPANT_SLOT}")
 
@@ -199,7 +240,7 @@ def render_trial(trial_number: int) -> None:
         if trial["video_url"]:
             st.video(trial["video_url"])
         else:
-            st.info("The assigned video will load here from the secure participant-assignment record.")
+            st.warning("No video link was supplied for this trial.")
         st.markdown("**Scene description**")
         st.write(trial["text_description"] or "No additional text description is provided for this trial.")
 
