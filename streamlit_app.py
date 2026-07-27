@@ -333,31 +333,34 @@ def render_trial(trial_number: int) -> None:
             key=f"other_constraints_{trial_number}",
         )
 
-        st.divider()
-        st.subheader(f"Trial #{trial_number} – VLM Attribute Review")
-        if trial["image_url"]:
-            st.image(trial["image_url"], caption="Event image provided to the vision-language model")
-        else:
-            st.caption("No separate event image link is provided; answer based on the available video and text description.")
-        st.caption("Below are the attributes predicted by the vision-language model.")
-
-        st.subheader("2.8. Predicted attribute accuracy")
-        st.caption("Based on the available visual evidence, how accurate is each predicted attribute?")
-        attribute_rows = {
-            f"Human state: {display_attribute(trial['human_state'])}": None,
-            f"Object property: {display_attribute(trial['object_property'])}": None,
-            f"Spatial context: {display_attribute(trial['spatial_context'])}": None,
-            f"Risk factor(s): {display_attribute(trial['risk_factor'])}": None,
-        }
         attribute_answers = {}
-        for row_number, row in enumerate(attribute_rows):
-            attribute_answers[row] = st.radio(
-                row,
-                ATTRIBUTE_SCALE,
-                index=None,
-                horizontal=True,
-                key=f"attribute_{trial_number}_{row_number}",
-            )
+        has_vlm_attributes = any(
+            trial[field]
+            for field in ("image_url", "human_state", "object_property", "spatial_context", "risk_factor")
+        )
+        if has_vlm_attributes:
+            st.divider()
+            st.subheader(f"Trial #{trial_number} – VLM Attribute Review")
+            if trial["image_url"]:
+                st.image(trial["image_url"], caption="Event image provided to the vision-language model")
+            st.caption("Below are the attributes predicted by the vision-language model.")
+
+            st.subheader("2.8. Predicted attribute accuracy")
+            st.caption("Based on the available visual evidence, how accurate is each predicted attribute?")
+            attribute_rows = {
+                f"Human state: {display_attribute(trial['human_state'])}": None,
+                f"Object property: {display_attribute(trial['object_property'])}": None,
+                f"Spatial context: {display_attribute(trial['spatial_context'])}": None,
+                f"Risk factor(s): {display_attribute(trial['risk_factor'])}": None,
+            }
+            for row_number, row in enumerate(attribute_rows):
+                attribute_answers[row] = st.radio(
+                    row,
+                    ATTRIBUTE_SCALE,
+                    index=None,
+                    horizontal=True,
+                    key=f"attribute_{trial_number}_{row_number}",
+                )
 
         previous, submit = st.columns([1, 2])
         with previous:
