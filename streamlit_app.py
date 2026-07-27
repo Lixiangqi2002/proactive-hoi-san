@@ -213,22 +213,40 @@ def render_trial(trial_number: int) -> None:
         )
         other_primary = ""
         if primary_response == "Other (please specify)":
-            other_primary = st.text_input("Other primary response", key=f"other_primary_{trial_number}")
+            other_primary = st.text_input(
+                "Please specify the other primary response",
+                key=f"other_primary_{trial_number}",
+            )
 
         st.subheader("2.5a. Additional high-level responses")
         selected_primary_short = primary_label_to_short_label(primary_response)
         secondary_options = [
             option for option in SECONDARY_RESPONSES if option != selected_primary_short
-        ] + [NO_ADDITIONAL_RESPONSE, "Other (please specify)"]
-        secondary_responses = st.multiselect(
-            "Other than your primary response, would any additional high-level response also be reasonable in this event? Select all that apply.",
-            secondary_options,
-            key=f"secondary_responses_{trial_number}",
-            help='Please do not select the same response that you selected as the primary response. If you select "No additional response would be appropriate", please do not select any other option.',
+        ]
+        st.caption(
+            'Please do not select the same response that you selected as the primary response. '
+            'If you select "No additional response would be appropriate", please do not select any other option.'
         )
+        secondary_responses = []
+        for response in secondary_options:
+            if st.checkbox(response, key=f"secondary_{trial_number}_{response}"):
+                secondary_responses.append(response)
+        if st.checkbox(
+            NO_ADDITIONAL_RESPONSE,
+            key=f"secondary_none_{trial_number}",
+        ):
+            secondary_responses.append(NO_ADDITIONAL_RESPONSE)
+        if st.checkbox(
+            "Other (please specify)",
+            key=f"secondary_other_{trial_number}",
+        ):
+            secondary_responses.append("Other (please specify)")
         other_secondary = ""
         if "Other (please specify)" in secondary_responses:
-            other_secondary = st.text_input("Other additional response", key=f"other_secondary_{trial_number}")
+            other_secondary = st.text_input(
+                "Please specify the other additional response",
+                key=f"other_secondary_{trial_number}",
+            )
 
         st.subheader("2.5b. Rationale")
         rationale = st.text_area(
@@ -240,9 +258,11 @@ def render_trial(trial_number: int) -> None:
         st.caption("How should the robot move or interact while carrying out its response in this event? Rate each option.")
         constraint_answers = {}
         for row_number, row in enumerate(CONSTRAINT_ROWS):
-            constraint_answers[row] = st.selectbox(
+            constraint_answers[row] = st.radio(
                 row,
-                ["— Select one —"] + CONSTRAINT_SCALE,
+                CONSTRAINT_SCALE,
+                index=None,
+                horizontal=True,
                 key=f"constraint_{trial_number}_{row_number}",
             )
 
@@ -295,7 +315,7 @@ def render_trial(trial_number: int) -> None:
         no_additional_is_valid = bool(secondary_responses) and not (
             NO_ADDITIONAL_RESPONSE in secondary_responses and len(secondary_responses) > 1
         )
-        all_constraints_answered = all(value != "— Select one —" for value in constraint_answers.values())
+        all_constraints_answered = all(value is not None for value in constraint_answers.values())
         all_attributes_answered = all(value != "— Select one —" for value in attribute_answers.values())
         other_values_are_valid = (
             ("Other (please specify)" not in concerns or other_concern.strip())
