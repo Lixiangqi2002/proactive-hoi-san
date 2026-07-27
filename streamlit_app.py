@@ -1,3 +1,5 @@
+import csv
+import io
 import re
 from typing import Any
 
@@ -11,9 +13,12 @@ st.set_page_config(
     layout="wide",
 )
 
-# This public repository intentionally contains no real participant assignments,
-# OneDrive links, or VLM attributes. They are retrieved at runtime from the
-# private Apps Script endpoint configured in Streamlit secrets.
+# The public assignment table contains the fixed P001–P134 allocations.  Each
+# visitor receives only the ten rows matching their `slot` URL parameter.
+ASSIGNMENTS_CSV_URL = (
+    "https://raw.githubusercontent.com/Lixiangqi2002/proactive-hoi-san/main/"
+    "data/participant_assignments134_jrdb_hunavsim_with_vlm.csv"
+)
 
 
 def get_participant_slot() -> str:
@@ -128,43 +133,26 @@ CONSENT_STATEMENTS = [
 
 
 @st.cache_data(ttl=300, show_spinner="Loading your assigned study materials...")
-def load_assigned_trials(slot: str, endpoint: str, api_key: str) -> list[dict[str, Any]]:
-    """Request only one participant's ten trials from the private endpoint."""
-    response = requests.get(
-        endpoint,
-        params={"slot": slot, "key": api_key},
-        timeout=30,
-    )
+def load_assigned_trials(slot: str) -> list[dict[str, Any]]:
+    """Load the ten pre-assigned rows for one participant from GitHub."""
+    response = requests.get(ASSIGNMENTS_CSV_URL, timeout=30)
     response.raise_for_status()
-    payload = response.json()
-    if not payload.get("ok"):
-        raise RuntimeError(payload.get("error", "The assignment API returned an unknown error."))
-    trials = payload.get("trials", [])
+    # lstrip handles the current JRDB file's UTF-8 BOM and future clean files.
+    rows = csv.DictReader(io.StringIO(response.text.lstrip("\ufeff")))
+    trials = [
+        row for row in rows
+        if str(row.get("participant_id", "")).strip().upper() == slot
+    ]
+    trials.sort(key=lambda row: int(row.get("trial_order", 0)))
     if len(trials) != TRIAL_COUNT:
         raise RuntimeError(f"Expected {TRIAL_COUNT} trials for {slot}, received {len(trials)}.")
     return trials
 
 
-def get_private_api_config() -> tuple[str, str] | None:
-    """Read the non-public endpoint URL and key from Streamlit Cloud secrets."""
-    try:
-        config = st.secrets["participant_data_api"]
-        return str(config["url"]), str(config["key"])
-    except (KeyError, FileNotFoundError):
-        return None
-
-
 def get_trial(trial_number: int) -> dict[str, Any]:
-    """Return this slot's actual assigned trial; no trial data lives in GitHub."""
+    """Return this slot's actual assigned trial and any available VLM fields."""
     if "assigned_trials" not in st.session_state:
-        config = get_private_api_config()
-        if config is None:
-            raise RuntimeError(
-                "The private assignment source has not been configured for this app yet."
-            )
-        st.session_state.assigned_trials = load_assigned_trials(
-            PARTICIPANT_SLOT, *config
-        )
+        st.session_state.assigned_trials = load_assigned_trials(PARTICIPANT_SLOT)
 
     source = st.session_state.assigned_trials[trial_number - 1]
     return {
