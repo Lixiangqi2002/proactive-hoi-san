@@ -1,10 +1,12 @@
 import csv
 import io
 import re
+from html import escape
 from typing import Any
 
 import requests
 import streamlit as st
+import streamlit.components.v1 as components
 
 
 st.set_page_config(
@@ -214,6 +216,28 @@ def render_exit(title: str, text: str, completion_url: str, code: str) -> None:
     st.caption(f"If Prolific asks for a code instead, use: {code}")
 
 
+def is_onedrive_share_link(url: str) -> bool:
+    """OneDrive share URLs point to viewer pages rather than media files."""
+    return any(host in url.lower() for host in ("1drv.ms", "onedrive.com", "sharepoint.com"))
+
+
+def render_media(url: str, media_type: str, height: int) -> None:
+    """Use the OneDrive viewer for its share pages; use native media otherwise."""
+    if is_onedrive_share_link(url):
+        components.html(
+            f'<iframe src="{escape(url, quote=True)}" '
+            f'style="width: 100%; height: {height}px; border: 0;" '
+            'allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>',
+            height=height,
+            scrolling=False,
+        )
+        st.link_button(f"Open {media_type} in OneDrive", url)
+    elif media_type == "video":
+        st.video(url)
+    else:
+        st.image(url, caption="Event image provided to the vision-language model")
+
+
 def render_trial(trial_number: int) -> None:
     try:
         trial = get_trial(trial_number)
@@ -226,7 +250,7 @@ def render_trial(trial_number: int) -> None:
     with st.container(border=True):
         st.subheader("Video and scene description")
         if trial["video_url"]:
-            st.video(trial["video_url"])
+            render_media(trial["video_url"], "video", height=480)
         else:
             st.warning("No video link was supplied for this trial.")
         st.markdown("**Scene description**")
@@ -342,7 +366,7 @@ def render_trial(trial_number: int) -> None:
             st.divider()
             st.subheader(f"Trial #{trial_number} – VLM Attribute Review")
             if trial["image_url"]:
-                st.image(trial["image_url"], caption="Event image provided to the vision-language model")
+                render_media(trial["image_url"], "image", height=520)
             st.caption("Below are the attributes predicted by the vision-language model.")
 
             st.subheader("2.8. Predicted attribute accuracy")
