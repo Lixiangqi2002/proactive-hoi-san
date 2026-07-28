@@ -1,25 +1,27 @@
 import csv
 import io
 import re
-from html import escape
 from typing import Any
 
 import requests
 import streamlit as st
-import streamlit.components.v1 as components
 
 
 st.set_page_config(
     page_title="Robot Proactive Task and Constraints",
-    page_icon="🤖",
+    page_icon="robot",
     layout="wide",
 )
 
-# The public assignment table contains the fixed P001–P134 allocations.  Each
+# The public assignment table contains the fixed P001-P134 allocations.  Each
 # visitor receives only the ten rows matching their `slot` URL parameter.
 ASSIGNMENTS_CSV_URL = (
     "https://raw.githubusercontent.com/Lixiangqi2002/proactive-hoi-san/main/"
     "data/participant_assignments134_jrdb_hunavsim_with_vlm.csv"
+)
+MEDIA_MANIFEST_CSV_URL = (
+    "https://huggingface.co/datasets/SelinaXiangqi/proactive-hoi-san-media/resolve/main/"
+    "media_manifest.csv"
 )
 
 
@@ -79,11 +81,11 @@ NO_SPECIAL_CONCERN = "No special concern is present; the event does not require 
 NOT_ENOUGH_CONCERN_INFO = "There is not enough information to determine the relevant concerns."
 
 PRIMARY_RESPONSES = [
-    "Continue — Continue its original plan without any special response.",
-    "Monitor — Continue observing the event before deciding whether intervention is needed.",
-    "Avoid — Adjust its movement to stay clear of the event and avoid interfering.",
-    "Assist — Offer or provide help to the relevant person.",
-    "Warn — Alert the relevant person or people about a possible problem or risk.",
+    "Continue - Continue its original plan without any special response.",
+    "Monitor - Continue observing the event before deciding whether intervention is needed.",
+    "Avoid - Adjust its movement to stay clear of the event and avoid interfering.",
+    "Assist - Offer or provide help to the relevant person.",
+    "Warn - Alert the relevant person or people about a possible problem or risk.",
     "Not enough information to decide.",
 ]
 SECONDARY_RESPONSES = ["Continue", "Monitor", "Avoid", "Assist", "Warn"]
@@ -151,16 +153,35 @@ def load_assigned_trials(slot: str) -> list[dict[str, Any]]:
     return trials
 
 
+@st.cache_data(ttl=300, show_spinner="Loading hosted media links...")
+def load_media_manifest(slot: str) -> dict[int, dict[str, str]]:
+    """Load direct Hugging Face media URLs for this participant slot."""
+    response = requests.get(MEDIA_MANIFEST_CSV_URL, timeout=30)
+    response.raise_for_status()
+    rows = csv.DictReader(io.StringIO(response.text.lstrip("\ufeff")))
+    manifest: dict[int, dict[str, str]] = {}
+    for row in rows:
+        if str(row.get("participant_id", "")).strip().upper() != slot:
+            continue
+        manifest[int(row["trial_order"])] = row
+    if len(manifest) != TRIAL_COUNT:
+        raise RuntimeError(f"Expected {TRIAL_COUNT} hosted media rows for {slot}, received {len(manifest)}.")
+    return manifest
+
+
 def get_trial(trial_number: int) -> dict[str, Any]:
     """Return this slot's actual assigned trial and any available VLM fields."""
     if "assigned_trials" not in st.session_state:
         st.session_state.assigned_trials = load_assigned_trials(PARTICIPANT_SLOT)
+    if "media_manifest" not in st.session_state:
+        st.session_state.media_manifest = load_media_manifest(PARTICIPANT_SLOT)
 
     source = st.session_state.assigned_trials[trial_number - 1]
+    media = st.session_state.media_manifest.get(trial_number, {})
     return {
-        "video_url": source.get("video_link") or None,
+        "video_url": media.get("video_url") or source.get("video_link") or None,
         "text_description": source.get("text_description") or None,
-        "image_url": source.get("image_link") or None,
+        "image_url": media.get("image_url") or source.get("image_link") or None,
         "human_state": source.get("human_state") or None,
         "object_property": source.get("object_property") or None,
         "spatial_context": source.get("spatial_context") or None,
@@ -176,7 +197,7 @@ def primary_label_to_short_label(value: str | None) -> str | None:
     if not value:
         return None
     for label in SECONDARY_RESPONSES:
-        if value.startswith(label + " —"):
+        if value.startswith(label):
             return label
     return None
 
@@ -205,7 +226,7 @@ def render_progress() -> None:
     labels = ["Consent", "Background", "Instruction check", "10 trials", "Completion"]
     current = pages[st.session_state.page]
     st.progress(current / (len(labels) - 1))
-    st.caption(" → ".join(f"**{label}**" if i == current else label for i, label in enumerate(labels)))
+    st.caption(" -> ".join(f"**{label}**" if i == current else label for i, label in enumerate(labels)))
 
 
 def render_exit(title: str, text: str, completion_url: str, code: str) -> None:
@@ -216,23 +237,9 @@ def render_exit(title: str, text: str, completion_url: str, code: str) -> None:
     st.caption(f"If Prolific asks for a code instead, use: {code}")
 
 
-def is_onedrive_share_link(url: str) -> bool:
-    """OneDrive share URLs point to viewer pages rather than media files."""
-    return any(host in url.lower() for host in ("1drv.ms", "onedrive.com", "sharepoint.com"))
-
-
-def render_media(url: str, media_type: str, height: int) -> None:
-    """Use the OneDrive viewer for its share pages; use native media otherwise."""
-    if is_onedrive_share_link(url):
-        components.html(
-            f'<iframe src="{escape(url, quote=True)}" '
-            f'style="width: 100%; height: {height}px; border: 0;" '
-            'allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>',
-            height=height,
-            scrolling=False,
-        )
-        st.link_button(f"Open {media_type} in OneDrive", url)
-    elif media_type == "video":
+def render_media(url: str, media_type: str) -> None:
+    """Render direct hosted media URLs in Streamlit."""
+    if media_type == "video":
         st.video(url)
     else:
         st.image(url, caption="Event image provided to the vision-language model")
@@ -250,7 +257,7 @@ def render_trial(trial_number: int) -> None:
     with st.container(border=True):
         st.subheader("Video and scene description")
         if trial["video_url"]:
-            render_media(trial["video_url"], "video", height=480)
+            render_media(trial["video_url"], "video")
         else:
             st.warning("No video link was supplied for this trial.")
         st.markdown("**Scene description**")
@@ -364,9 +371,9 @@ def render_trial(trial_number: int) -> None:
         )
         if has_vlm_attributes:
             st.divider()
-            st.subheader(f"Trial #{trial_number} – VLM Attribute Review")
+            st.subheader(f"Trial #{trial_number} - VLM Attribute Review")
             if trial["image_url"]:
-                render_media(trial["image_url"], "image", height=520)
+                render_media(trial["image_url"], "image")
             st.caption("Below are the attributes predicted by the vision-language model.")
 
             st.subheader("2.8. Predicted attribute accuracy")
