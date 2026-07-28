@@ -187,6 +187,7 @@ def get_trial(trial_number: int) -> dict[str, Any]:
     media = st.session_state.media_manifest.get(trial_number, {})
     return {
         "scene_image_url": media.get("scene_image_url") or media.get("video_url") or source.get("image_link") or None,
+        "target_annotation_image_url": media.get("target_annotation_image_url") or media.get("scene_image_url") or media.get("image_url") or source.get("image_link") or None,
         "text_description": source.get("text_description") or None,
         "vlm_input_image_url": media.get("vlm_input_image_url") or media.get("image_url") or source.get("image_link") or None,
         "human_state": source.get("human_state") or None,
@@ -262,11 +263,24 @@ def render_trial(trial_number: int) -> None:
     st.caption(f"Assigned participant slot: {PARTICIPANT_SLOT}")
 
     with st.container(border=True):
-        st.subheader("RGB scene frame and scene description")
-        if trial["scene_image_url"]:
-            render_media(trial["scene_image_url"], "image", "RGB scene frame for this trial")
-        else:
-            st.warning("No RGB scene frame was supplied for this trial.")
+        st.subheader("RGB scene frame and target annotation")
+        scene_col, annotation_col = st.columns(2)
+        with scene_col:
+            st.markdown("**Original RGB scene frame**")
+            if trial["scene_image_url"]:
+                render_media(trial["scene_image_url"], "image", "Original RGB scene frame")
+            else:
+                st.warning("No RGB scene frame was supplied for this trial.")
+        with annotation_col:
+            st.markdown("**Target annotation**")
+            if trial["target_annotation_image_url"]:
+                render_media(
+                    trial["target_annotation_image_url"],
+                    "image",
+                    "Target annotation: green = human, blue = object",
+                )
+            else:
+                st.warning("No target annotation image was supplied for this trial.")
         st.markdown("**Scene description**")
         st.write(trial["text_description"] or "No additional text description is provided for this trial.")
 
