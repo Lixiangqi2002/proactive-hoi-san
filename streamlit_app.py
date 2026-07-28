@@ -35,7 +35,14 @@ def get_participant_slot() -> str:
     return slot
 
 
+def get_preview_mode() -> bool:
+    """Allow researchers to inspect the survey without answering every item."""
+    value = str(st.query_params.get("preview", "")).strip().lower()
+    return value in {"1", "true", "yes", "y", "preview"}
+
+
 PARTICIPANT_SLOT = get_participant_slot()
+PREVIEW_MODE = get_preview_mode()
 TRIAL_COUNT = 10
 
 DEFAULT_COMPLETION_URL = "https://app.prolific.com/submissions/complete?cc=CD10CDO9"
@@ -419,7 +426,7 @@ def render_trial(trial_number: int) -> None:
             and (primary_response != "Other (please specify)" or other_primary.strip())
             and ("Other (please specify)" not in secondary_responses or other_secondary.strip())
         )
-        if not all([clarity, proactive_need, concerns_are_valid, primary_response, no_additional_is_valid, all_constraints_answered, all_attributes_answered, other_values_are_valid]):
+        if not PREVIEW_MODE and not all([clarity, proactive_need, concerns_are_valid, primary_response, no_additional_is_valid, all_constraints_answered, all_attributes_answered, other_values_are_valid]):
             st.error("Please answer every required question and resolve the mutually exclusive selections before continuing.")
         else:
             st.session_state[f"trial_{trial_number}_submitted"] = {
@@ -448,6 +455,11 @@ session_id = st.query_params.get("SESSION_ID", "PREVIEW_SESSION")
 
 st.title("Robot Proactive Task and Constraints")
 st.caption(f"Assigned participant slot: {PARTICIPANT_SLOT}  |  Prolific PID: {prolific_pid}")
+if PREVIEW_MODE:
+    st.info(
+        "Researcher preview mode is on: required-answer checks are disabled. "
+        "Use the normal slot URL without `preview=1` for real participants."
+    )
 render_progress()
 
 if st.session_state.page == "consent":
@@ -508,8 +520,10 @@ if st.session_state.page == "consent":
         index=None,
     )
     if st.button("Continue", type="primary"):
-        if consent == "Yes, I consent and wish to continue.":
-            if all(consent_confirmations):
+        if PREVIEW_MODE and consent is None:
+            move_to("background")
+        elif consent == "Yes, I consent and wish to continue.":
+            if PREVIEW_MODE or all(consent_confirmations):
                 move_to("background")
             else:
                 st.error("Please tick every consent statement before continuing.")
@@ -543,7 +557,9 @@ elif st.session_state.page == "background":
         index=None,
     )
     if st.button("Continue", type="primary"):
-        if attitude is None:
+        if PREVIEW_MODE and attitude is None:
+            move_to("instruction")
+        elif attitude is None:
             st.error("Please choose one statement before continuing.")
         elif attitude.startswith("E."):
             move_to("not_engaging")
@@ -572,7 +588,9 @@ elif st.session_state.page == "instruction":
         help="This question checks whether the task instructions are clear.",
     )
     if st.button("Continue", type="primary"):
-        if instruction_answer is None:
+        if PREVIEW_MODE and instruction_answer is None:
+            move_to("trial")
+        elif instruction_answer is None:
             st.error("Please select one answer before continuing.")
         elif instruction_answer.startswith("Only the video"):
             move_to("trial")
