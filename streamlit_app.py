@@ -134,7 +134,7 @@ CONSENT_STATEMENTS = [
     "I confirm that I have read and understood the participant information for this study.",
     "I confirm that I am aged 18 or over.",
     "I understand that my participation is voluntary and that I may stop taking part at any time before submitting the questionnaire, without giving a reason.",
-    "I understand what participation involves, including watching 10 short simulated robot-scene videos, reading brief text descriptions, and answering questions about proactive robot responses and navigation constraints.",
+    "I understand what participation involves, including reviewing 10 RGB scene frames, reading brief text descriptions, and answering questions about proactive robot responses and navigation constraints.",
     "I understand that the questionnaire will not ask for my name, email address, signature, or other directly identifying information.",
     "I understand that my Prolific ID may be used only to manage participation, payment, completion checking, and data quality review.",
     "I understand that confidentiality and anonymity will be maintained and that research outputs will not identify me as an individual participant.",
@@ -186,9 +186,9 @@ def get_trial(trial_number: int) -> dict[str, Any]:
     source = st.session_state.assigned_trials[trial_number - 1]
     media = st.session_state.media_manifest.get(trial_number, {})
     return {
-        "video_url": media.get("video_url") or source.get("video_link") or None,
+        "scene_image_url": media.get("scene_image_url") or media.get("video_url") or source.get("image_link") or None,
         "text_description": source.get("text_description") or None,
-        "image_url": media.get("image_url") or source.get("image_link") or None,
+        "vlm_input_image_url": media.get("vlm_input_image_url") or media.get("image_url") or source.get("image_link") or None,
         "human_state": source.get("human_state") or None,
         "object_property": source.get("object_property") or None,
         "spatial_context": source.get("spatial_context") or None,
@@ -244,12 +244,12 @@ def render_exit(title: str, text: str, completion_url: str, code: str) -> None:
     st.caption(f"If Prolific asks for a code instead, use: {code}")
 
 
-def render_media(url: str, media_type: str) -> None:
+def render_media(url: str, media_type: str, caption: str | None = None) -> None:
     """Render direct hosted media URLs in Streamlit."""
     if media_type == "video":
         st.video(url)
     else:
-        st.image(url, caption="Event image provided to the vision-language model")
+        st.image(url, caption=caption)
 
 
 def render_trial(trial_number: int) -> None:
@@ -262,18 +262,18 @@ def render_trial(trial_number: int) -> None:
     st.caption(f"Assigned participant slot: {PARTICIPANT_SLOT}")
 
     with st.container(border=True):
-        st.subheader("Video and scene description")
-        if trial["video_url"]:
-            render_media(trial["video_url"], "video")
+        st.subheader("RGB scene frame and scene description")
+        if trial["scene_image_url"]:
+            render_media(trial["scene_image_url"], "image", "RGB scene frame for this trial")
         else:
-            st.warning("No video link was supplied for this trial.")
+            st.warning("No RGB scene frame was supplied for this trial.")
         st.markdown("**Scene description**")
         st.write(trial["text_description"] or "No additional text description is provided for this trial.")
 
     with st.form(f"trial_form_{trial_number}", border=False):
         st.subheader("2.1. Scene understanding")
         clarity = st.radio(
-            "How clearly can you understand what is happening in this scene, based on the video and the text description?",
+            "How clearly can you understand what is happening in this scene, based on the RGB scene frame and the text description?",
             CLARITY_SCALE,
             index=None,
             horizontal=True,
@@ -374,13 +374,13 @@ def render_trial(trial_number: int) -> None:
         attribute_answers = {}
         has_vlm_attributes = any(
             trial[field]
-            for field in ("image_url", "human_state", "object_property", "spatial_context", "risk_factor")
+            for field in ("vlm_input_image_url", "human_state", "object_property", "spatial_context", "risk_factor")
         )
         if has_vlm_attributes:
             st.divider()
             st.subheader(f"Trial #{trial_number} - VLM Attribute Review")
-            if trial["image_url"]:
-                render_media(trial["image_url"], "image")
+            if trial["vlm_input_image_url"]:
+                render_media(trial["vlm_input_image_url"], "image", "Image provided to the vision-language model")
             st.caption("Below are the attributes predicted by the vision-language model.")
 
             st.subheader("2.8. Predicted attribute accuracy")
@@ -479,12 +479,12 @@ if st.session_state.page == "consent":
     )
     st.markdown("### Why you have been invited")
     st.write(
-        "You are invited as an adult, English-fluent participant who can complete an online questionnaire involving short videos and written scene descriptions."
+        "You are invited as an adult, English-fluent participant who can complete an online questionnaire involving RGB scene frames and written scene descriptions."
     )
     st.markdown("### What you will be asked to do")
     st.write(
-        "You will watch 10 short simulated robot-scene videos and read brief scene descriptions. "
-        "Some scenes may also include a simple top-down view or a frame used by a vision-language model. "
+        "You will review 10 RGB scene frames and read brief scene descriptions. "
+        "Some scenes may also include a separate frame used by a vision-language model. "
         "The visual simulation may not always be fully realistic, so the text description is provided to help you understand the scene. "
         "For each scene, you will judge what is happening, what proactive response the robot should take, and what movement or interaction constraints are relevant."
     )
@@ -543,10 +543,10 @@ elif st.session_state.page == "no_consent":
 elif st.session_state.page == "background":
     st.header("Background Information")
     st.write(
-        "In this study, you will watch short scenes from a robot's point of view and, when provided, a simple top-down view. Text descriptions clarify the scene, especially when the simulator rendering is not realistic enough to fully convey the human-object interaction, object properties, spatial context, or potential risks."
+        "In this study, you will review RGB scene frames from a robot-related everyday environment. Text descriptions clarify the scene, especially when the simulator rendering is not realistic enough to fully convey the human-object interaction, object properties, spatial context, or potential risks."
     )
     st.write(
-        "For each scene, please judge what is happening and what the robot should do based only on the video, the top-down view if provided, and the text description. There are no right or wrong answers; some scenes may be ambiguous."
+        "For each scene, please judge what is happening and what the robot should do based only on the RGB scene frame, the VLM input image if provided for attribute review, and the text description. There are no right or wrong answers; some scenes may be ambiguous."
     )
     st.markdown(
         "**Main response types:** Continue (continue its original plan), Monitor (observe without intervening yet), Avoid (stay clear or avoid interfering), Assist (offer or perform help), and Warn (alert people about a possible problem or risk)."
@@ -579,7 +579,7 @@ elif st.session_state.page == "instruction":
     instruction_answer = st.radio(
         "In this study, what should you base your answers on?",
         [
-            "Only the video, top-down view if provided, and scene description.",
+            "Only the RGB scene frame, VLM input image if provided, and scene description.",
             "My prior assumptions about robots.",
             "Random guesses.",
             "What I think the researcher wants.",
@@ -592,7 +592,7 @@ elif st.session_state.page == "instruction":
             move_to("trial")
         elif instruction_answer is None:
             st.error("Please select one answer before continuing.")
-        elif instruction_answer.startswith("Only the video"):
+        elif instruction_answer.startswith("Only the RGB scene frame"):
             move_to("trial")
         else:
             move_to("failed_check")
