@@ -277,7 +277,7 @@ def render_trial(trial_number: int) -> None:
                 render_media(
                     trial["target_annotation_image_url"],
                     "image",
-                    "Target annotation: green = human, blue = object",
+                    "Target annotation: human/object target boxes",
                 )
             else:
                 st.warning("No target annotation image was supplied for this trial.")
