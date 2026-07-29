@@ -13,11 +13,11 @@ st.set_page_config(
     layout="wide",
 )
 
-# The public assignment table contains the fixed P001-P134 allocations.  Each
+# The public assignment table contains the fixed P001-P132 allocations.  Each
 # visitor receives only the ten rows matching their `slot` URL parameter.
 ASSIGNMENTS_CSV_URL = (
     "https://raw.githubusercontent.com/Lixiangqi2002/proactive-hoi-san/main/"
-    "data/participant_assignments134_jrdb_hunavsim_with_vlm.csv"
+    "data/participant_assignment0729_with_vlm_attribute.csv"
 )
 MEDIA_MANIFEST_CSV_URL = (
     "https://huggingface.co/datasets/SelinaXiangqi/proactive-hoi-san-media/resolve/main/"
@@ -29,7 +29,7 @@ def get_participant_slot() -> str:
     """Read the fixed Taskflow slot from the allocated study URL."""
     slot = str(st.query_params.get("slot", "P001")).strip().upper()
     match = re.fullmatch(r"P(\d{3})", slot)
-    if not match or not 1 <= int(match.group(1)) <= 134:
+    if not match or not 1 <= int(match.group(1)) <= 132:
         st.error("This study link has an invalid participant slot.")
         st.stop()
     return slot
