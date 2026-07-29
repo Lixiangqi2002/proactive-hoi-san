@@ -19,10 +19,13 @@ ASSIGNMENTS_CSV_URL = (
     "https://raw.githubusercontent.com/Lixiangqi2002/proactive-hoi-san/main/"
     "data/participant_assignment0729_with_vlm_attribute.csv"
 )
-MEDIA_MANIFEST_CSV_URL = (
+HF_MEDIA_REVISION = "ce0631741746b97ecba81b75756a80420a1e35e3"
+HF_MEDIA_ROOT = (
     "https://huggingface.co/datasets/SelinaXiangqi/proactive-hoi-san-media/resolve/"
-    "ce0631741746b97ecba81b75756a80420a1e35e3/"
-    "media_manifest.csv"
+    f"{HF_MEDIA_REVISION}"
+)
+MEDIA_MANIFEST_CSV_URL = (
+    f"{HF_MEDIA_ROOT}/media_manifest.csv"
 )
 
 
@@ -179,6 +182,16 @@ def load_media_manifest(slot: str) -> dict[int, dict[str, str]]:
     return manifest
 
 
+def hf_media_url(path: str | None) -> str | None:
+    """Build a stable media URL pinned to the validated Hugging Face revision."""
+    value = str(path or "").strip()
+    if not value:
+        return None
+    if value.startswith(("http://", "https://")):
+        return value
+    return f"{HF_MEDIA_ROOT}/{value.lstrip('/')}"
+
+
 def get_trial(trial_number: int) -> dict[str, Any]:
     """Return this slot's actual assigned trial and any available VLM fields."""
     if "assigned_trials" not in st.session_state:
@@ -188,11 +201,17 @@ def get_trial(trial_number: int) -> dict[str, Any]:
 
     source = st.session_state.assigned_trials[trial_number - 1]
     media = st.session_state.media_manifest.get(trial_number, {})
+    scene_image_url = hf_media_url(media.get("scene_image_path")) or media.get("scene_image_url")
+    target_annotation_image_url = (
+        hf_media_url(media.get("target_annotation_image_path"))
+        or media.get("target_annotation_image_url")
+    )
+    vlm_input_image_url = hf_media_url(media.get("vlm_input_image_path")) or media.get("vlm_input_image_url")
     return {
-        "scene_image_url": media.get("scene_image_url") or media.get("video_url") or source.get("image_link") or None,
-        "target_annotation_image_url": media.get("target_annotation_image_url") or media.get("scene_image_url") or media.get("image_url") or source.get("image_link") or None,
+        "scene_image_url": scene_image_url or media.get("video_url") or source.get("image_link") or None,
+        "target_annotation_image_url": target_annotation_image_url or scene_image_url or media.get("image_url") or source.get("image_link") or None,
         "text_description": source.get("text_description") or None,
-        "vlm_input_image_url": media.get("vlm_input_image_url") or media.get("image_url") or source.get("image_link") or None,
+        "vlm_input_image_url": vlm_input_image_url or media.get("image_url") or source.get("image_link") or None,
         "human_state": source.get("human_state") or None,
         "object_property": source.get("object_property") or None,
         "spatial_context": source.get("spatial_context") or None,
