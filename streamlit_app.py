@@ -1,6 +1,8 @@
 import csv
 import io
+import json
 import re
+from datetime import datetime, timezone
 from typing import Any
 
 import requests
@@ -212,6 +214,7 @@ def get_trial(trial_number: int) -> dict[str, Any]:
         "target_annotation_image_url": target_annotation_image_url or scene_image_url or media.get("image_url") or source.get("image_link") or None,
         "text_description": source.get("text_description") or None,
         "vlm_input_image_url": vlm_input_image_url or media.get("image_url") or source.get("image_link") or None,
+        "pred_interaction": source.get("pred_interaction") or None,
         "human_state": source.get("human_state") or None,
         "object_property": source.get("object_property") or None,
         "spatial_context": source.get("spatial_context") or None,
@@ -235,6 +238,8 @@ def primary_label_to_short_label(value: str | None) -> str | None:
 def initialise_state() -> None:
     st.session_state.setdefault("page", "consent")
     st.session_state.setdefault("trial_number", 1)
+    st.session_state.setdefault("response_saved", False)
+    st.session_state.setdefault("response_save_error", "")
 
 
 def move_to(page: str) -> None:
@@ -265,6 +270,109 @@ def render_exit(title: str, text: str, completion_url: str, code: str) -> None:
     st.write("Please return to Prolific using the completion URL below.")
     st.link_button("Return to Prolific", completion_url, type="primary")
     st.caption(f"If Prolific asks for a code instead, use: {code}")
+
+
+def get_google_sheet_webhook_url() -> str:
+    """Read the private Google Sheet webhook URL from Streamlit secrets."""
+    try:
+        return str(
+            st.secrets.get("GOOGLE_SHEET_WEBHOOK_URL")
+            or st.secrets.get("google_sheet_webhook_url")
+            or ""
+        ).strip()
+    except Exception:
+        return ""
+
+
+def build_response_payload() -> dict[str, Any]:
+    """Collect metadata and all ten trial responses into one JSON payload."""
+    assigned_trials = st.session_state.get("assigned_trials") or load_assigned_trials(PARTICIPANT_SLOT)
+    media_manifest = st.session_state.get("media_manifest") or load_media_manifest(PARTICIPANT_SLOT)
+    trials: list[dict[str, Any]] = []
+    for trial_number in range(1, TRIAL_COUNT + 1):
+        source = assigned_trials[trial_number - 1]
+        media = media_manifest.get(trial_number, {})
+        answers = st.session_state.get(f"trial_{trial_number}_submitted", {})
+        trials.append(
+            {
+                "trial_number": trial_number,
+                "assignment": {
+                    "trial_id": source.get("trial_id"),
+                    "trial_order": source.get("trial_order"),
+                    "repeat_index_for_video": source.get("repeat_index_for_video"),
+                    "clip_team_id": source.get("clip_team_id"),
+                    "clip_number": source.get("clip_number"),
+                    "source": source.get("source"),
+                    "scene_sequence": source.get("scene_sequence"),
+                    "camera_id": source.get("camera_id"),
+                    "interactive_obj": source.get("interactive_obj"),
+                    "interaction_type": source.get("interaction_type"),
+                    "selected_frame_index": source.get("selected_frame_index"),
+                },
+                "media": {
+                    "scene_image_path": media.get("scene_image_path"),
+                    "target_annotation_image_path": media.get("target_annotation_image_path"),
+                    "vlm_input_image_path": media.get("vlm_input_image_path"),
+                },
+                "vlm_predictions": {
+                    "pred_interaction": source.get("pred_interaction"),
+                    "human_state": source.get("human_state"),
+                    "object_property": source.get("object_property"),
+                    "spatial_context": source.get("spatial_context"),
+                    "risk_factor": source.get("risk_factor"),
+                },
+                "answers": answers,
+            }
+        )
+    return {
+        "submitted_at_utc": datetime.now(timezone.utc).isoformat(),
+        "participant_slot": PARTICIPANT_SLOT,
+        "prolific_pid": str(st.query_params.get("PROLIFIC_PID", "")),
+        "study_id": str(st.query_params.get("STUDY_ID", "")),
+        "session_id": str(st.query_params.get("SESSION_ID", "")),
+        "preview_mode": PREVIEW_MODE,
+        "robot_attitude": st.session_state.get("robot_attitude"),
+        "instruction_check_answer": st.session_state.get("instruction_check_answer"),
+        "hf_media_revision": HF_MEDIA_REVISION,
+        "assignments_csv_url": ASSIGNMENTS_CSV_URL,
+        "media_manifest_csv_url": MEDIA_MANIFEST_CSV_URL,
+        "trials": trials,
+    }
+
+
+def save_response_to_google_sheet() -> tuple[bool, str]:
+    """POST the completed response payload to an Apps Script Google Sheet backend."""
+    if st.session_state.get("response_saved"):
+        return True, "Response already saved."
+    payload = build_response_payload()
+    if PREVIEW_MODE:
+        st.session_state["last_response_payload_preview"] = payload
+        st.session_state["response_saved"] = True
+        return True, "Preview response kept in session only."
+    webhook_url = get_google_sheet_webhook_url()
+    if not webhook_url:
+        return False, (
+            "Google Sheet response storage is not configured. "
+            "Add GOOGLE_SHEET_WEBHOOK_URL to Streamlit secrets before recruiting participants."
+        )
+    try:
+        response = requests.post(
+            webhook_url,
+            data=json.dumps(payload),
+            headers={"Content-Type": "application/json"},
+            timeout=30,
+        )
+        response.raise_for_status()
+        result = response.json()
+        if not result.get("ok"):
+            return False, f"Google Sheet backend rejected the response: {result}"
+    except requests.RequestException as error:
+        return False, f"Could not save responses to Google Sheet: {error}"
+    except ValueError as error:
+        return False, f"Google Sheet backend returned a non-JSON response: {error}"
+    st.session_state["response_saved"] = True
+    st.session_state["response_save_error"] = ""
+    return True, "Response saved to Google Sheet."
 
 
 def render_media(url: str, media_type: str, caption: str | None = None) -> None:
@@ -403,7 +511,14 @@ def render_trial(trial_number: int) -> None:
         attribute_answers = {}
         has_vlm_attributes = any(
             trial[field]
-            for field in ("vlm_input_image_url", "human_state", "object_property", "spatial_context", "risk_factor")
+            for field in (
+                "vlm_input_image_url",
+                "pred_interaction",
+                "human_state",
+                "object_property",
+                "spatial_context",
+                "risk_factor",
+            )
         )
         if has_vlm_attributes:
             st.divider()
@@ -415,6 +530,7 @@ def render_trial(trial_number: int) -> None:
             st.subheader("2.8. Predicted attribute accuracy")
             st.caption("Based on the available visual evidence, how accurate is each predicted attribute?")
             attribute_rows = {
+                f"Predicted interaction: {display_attribute(trial['pred_interaction'])}": None,
                 f"Human state: {display_attribute(trial['human_state'])}": None,
                 f"Object property: {display_attribute(trial['object_property'])}": None,
                 f"Spatial context: {display_attribute(trial['spatial_context'])}": None,
@@ -462,15 +578,23 @@ def render_trial(trial_number: int) -> None:
                 "clarity": clarity,
                 "proactive_need": proactive_need,
                 "concerns": concerns,
+                "other_concern": other_concern,
                 "primary_response": primary_response,
+                "other_primary": other_primary,
                 "secondary_responses": secondary_responses,
+                "other_secondary": other_secondary,
                 "rationale": rationale,
                 "constraints": constraint_answers,
                 "other_constraints": other_constraints,
                 "attribute_accuracy": attribute_answers,
             }
             if trial_number == TRIAL_COUNT:
-                move_to("completion")
+                saved, message = save_response_to_google_sheet()
+                if saved:
+                    move_to("completion")
+                else:
+                    st.session_state["response_save_error"] = message
+                    st.error(message)
             else:
                 st.session_state.trial_number += 1
                 st.rerun()
@@ -489,6 +613,12 @@ if PREVIEW_MODE:
         "Researcher preview mode is on: required-answer checks are disabled. "
         "Use the normal slot URL without `researcher_preview=1` for real participants."
     )
+elif not get_google_sheet_webhook_url():
+    st.error(
+        "Response storage is not configured yet. "
+        "Add GOOGLE_SHEET_WEBHOOK_URL to Streamlit secrets before sending this link to participants."
+    )
+    st.stop()
 render_progress()
 
 if st.session_state.page == "consent":
@@ -591,8 +721,10 @@ elif st.session_state.page == "background":
         elif attitude is None:
             st.error("Please choose one statement before continuing.")
         elif attitude.startswith("E."):
+            st.session_state["robot_attitude"] = attitude
             move_to("not_engaging")
         else:
+            st.session_state["robot_attitude"] = attitude
             move_to("instruction")
 
 elif st.session_state.page == "not_engaging":
@@ -622,8 +754,10 @@ elif st.session_state.page == "instruction":
         elif instruction_answer is None:
             st.error("Please select one answer before continuing.")
         elif instruction_answer.startswith("Only the RGB scene frame"):
+            st.session_state["instruction_check_answer"] = instruction_answer
             move_to("trial")
         else:
+            st.session_state["instruction_check_answer"] = instruction_answer
             move_to("failed_check")
 
 elif st.session_state.page == "failed_check":
@@ -639,10 +773,21 @@ elif st.session_state.page == "trial":
 
 elif st.session_state.page == "completion":
     st.header("Thank you for completing the study")
-    st.success("Your responses have been recorded for this prototype session.")
-    st.write("Please return to Prolific using the completion URL below.")
-    st.link_button("Return to Prolific", DEFAULT_COMPLETION_URL, type="primary")
-    st.caption("If Prolific asks for a code instead, use: CD10CDO9")
+    if st.session_state.get("response_saved"):
+        if PREVIEW_MODE:
+            st.success("Preview completed. Required-answer checks and permanent response storage are disabled in researcher preview mode.")
+        else:
+            st.success("Your responses have been saved.")
+            st.write("Please return to Prolific using the completion URL below.")
+            st.link_button("Return to Prolific", DEFAULT_COMPLETION_URL, type="primary")
+            st.caption("If Prolific asks for a code instead, use: CD10CDO9")
+    else:
+        st.error("Your responses have not been saved yet. Please do not close this page.")
+        saved, message = save_response_to_google_sheet()
+        if saved:
+            st.rerun()
+        else:
+            st.warning(message)
     with st.expander("Prototype status"):
         st.json(
             {
@@ -650,6 +795,8 @@ elif st.session_state.page == "completion":
                 "prolific_pid": prolific_pid,
                 "study_id": study_id,
                 "session_id": session_id,
-                "storage": "Session-only. Add a private database before recruiting participants.",
+                "storage": "Preview-only session storage" if PREVIEW_MODE else "Google Sheet webhook required",
+                "response_saved": st.session_state.get("response_saved", False),
+                "response_save_error": st.session_state.get("response_save_error", ""),
             }
         )

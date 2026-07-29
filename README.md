@@ -1,25 +1,42 @@
-# 🎈 Blank app template
+# Robot Proactive Task and Constraints
 
-A simple Streamlit app template for you to modify!
+Streamlit survey app for the HOI-SAN proactive robot task and navigation-constraint user study.
 
-[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://blank-app-template.streamlit.app/)
+## Run locally
 
-### How to run it on your own machine
+Prerequisite: install `uv` if you do not already have it.
 
-Prerequisite: install `uv` if you don't already have it.
-
-```
-$ curl -LsSf https://astral.sh/uv/install.sh | sh
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-1. Sync the dependencies
+Sync dependencies:
 
-   ```
-   $ uv sync
-   ```
+```bash
+uv sync
+```
 
-2. Run the app
+Run the app:
 
-   ```
-   $ uv run streamlit run streamlit_app.py
-   ```
+```bash
+uv run streamlit run streamlit_app.py
+```
+
+## Response storage
+
+Real participant responses must be saved through a private Google Sheet backend before recruitment.
+
+1. Create a private Google Sheet for responses.
+2. Open `Extensions -> Apps Script`.
+3. Paste `google_sheet_backend_apps_script.gs` into the Apps Script editor.
+4. Deploy it as a Web App:
+   - Execute as: `Me`
+   - Who has access: `Anyone`
+5. Copy the Web App URL into Streamlit Cloud secrets:
+
+```toml
+GOOGLE_SHEET_WEBHOOK_URL = "https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec"
+```
+
+In real participant mode, the app will not show the Prolific completion link unless the response is saved successfully.
+Researcher preview mode keeps responses in session only and is not for data collection.
