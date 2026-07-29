@@ -19,7 +19,7 @@ ASSIGNMENTS_CSV_URL = (
     "https://raw.githubusercontent.com/Lixiangqi2002/proactive-hoi-san/main/"
     "data/participant_assignment0729_with_vlm_attribute.csv"
 )
-HF_MEDIA_REVISION = "ce0631741746b97ecba81b75756a80420a1e35e3"
+HF_MEDIA_REVISION = "bf13eab8f2187fe638c8e29f48ec4b22e8ca63e3"
 HF_MEDIA_ROOT = (
     "https://huggingface.co/datasets/SelinaXiangqi/proactive-hoi-san-media/resolve/"
     f"{HF_MEDIA_REVISION}"
