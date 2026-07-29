@@ -20,7 +20,8 @@ ASSIGNMENTS_CSV_URL = (
     "data/participant_assignment0729_with_vlm_attribute.csv"
 )
 MEDIA_MANIFEST_CSV_URL = (
-    "https://huggingface.co/datasets/SelinaXiangqi/proactive-hoi-san-media/resolve/main/"
+    "https://huggingface.co/datasets/SelinaXiangqi/proactive-hoi-san-media/resolve/"
+    "ce0631741746b97ecba81b75756a80420a1e35e3/"
     "media_manifest.csv"
 )
 
