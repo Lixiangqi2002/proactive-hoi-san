@@ -37,7 +37,9 @@ def get_participant_slot() -> str:
 
 def get_preview_mode() -> bool:
     """Allow researchers to inspect the survey without answering every item."""
-    value = str(st.query_params.get("preview", "")).strip().lower()
+    # Preview is deliberately opt-in via a researcher-only parameter.  Old test
+    # links with `preview=1` should not silently disable required-answer checks.
+    value = str(st.query_params.get("researcher_preview", "")).strip().lower()
     return value in {"1", "true", "yes", "y", "preview"}
 
 
@@ -263,24 +265,17 @@ def render_trial(trial_number: int) -> None:
     st.caption(f"Assigned participant slot: {PARTICIPANT_SLOT}")
 
     with st.container(border=True):
-        st.subheader("RGB scene frame and target annotation")
-        scene_col, annotation_col = st.columns(2)
-        with scene_col:
-            st.markdown("**Original RGB scene frame**")
-            if trial["scene_image_url"]:
-                render_media(trial["scene_image_url"], "image", "Original RGB scene frame")
-            else:
-                st.warning("No RGB scene frame was supplied for this trial.")
-        with annotation_col:
-            st.markdown("**Target annotation**")
-            if trial["target_annotation_image_url"]:
-                render_media(
-                    trial["target_annotation_image_url"],
-                    "image",
-                    "Target annotation: human/object target boxes",
-                )
-            else:
-                st.warning("No target annotation image was supplied for this trial.")
+        st.subheader("RGB scene frame and target crop annotation")
+        if trial["target_annotation_image_url"]:
+            render_media(
+                trial["target_annotation_image_url"],
+                "image",
+                "Left: original RGB scene frame. Right: target crop with human/object boxes.",
+            )
+        elif trial["scene_image_url"]:
+            render_media(trial["scene_image_url"], "image", "Original RGB scene frame")
+        else:
+            st.warning("No RGB scene frame was supplied for this trial.")
         st.markdown("**Scene description**")
         st.write(trial["text_description"] or "No additional text description is provided for this trial.")
 
@@ -472,7 +467,7 @@ st.caption(f"Assigned participant slot: {PARTICIPANT_SLOT}  |  Prolific PID: {pr
 if PREVIEW_MODE:
     st.info(
         "Researcher preview mode is on: required-answer checks are disabled. "
-        "Use the normal slot URL without `preview=1` for real participants."
+        "Use the normal slot URL without `researcher_preview=1` for real participants."
     )
 render_progress()
 
